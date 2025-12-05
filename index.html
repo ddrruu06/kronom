@@ -23,7 +23,9 @@
             overflow-x: hidden;
             display: flex;
             justify-content: center;
+            align-items: center; /* Dikeyde ortala */
             min-height: 100vh;
+            margin: 0;
         }
         svg {
             display: inline-block;
@@ -324,14 +326,20 @@
 
             return (
                 <div 
-                    className={`w-full max-w-[1920px] aspect-video flex flex-col items-center justify-center bg-black text-white font-sans select-none overflow-hidden relative pb-10 transition-all duration-500 ${sessionMode === 'BREAK' ? 'break-mode-border' : ''}`}
-                    style={{ transform: "scale(0.85)", transformOrigin: "top center" }}
+                    className={`w-full max-w-[1920px] flex flex-col items-center relative transition-all duration-500 bg-black text-white font-sans select-none overflow-hidden ${sessionMode === 'BREAK' ? 'break-mode-border' : ''}`}
+                    style={{ 
+                        aspectRatio: "52/30", 
+                        transform: "scale(0.85)", 
+                        transformOrigin: "center center",
+                        justifyContent: "flex-start",
+                        paddingTop: "8vh" // Üstten güzel bir boşluk
+                    }}
                 >
                     
                     {showSuccessFlash && <div className="success-flash-overlay"></div>}
 
                     {/* Üst Göstergeler */}
-                    <div className="w-full max-w-xl flex flex-col gap-6 mb-10 sm:mb-16 relative z-10 px-4 mt-6">
+                    <div className="w-full max-w-xl flex flex-col gap-6 mb-8 relative z-10 px-4">
                         {/* 1. Sıra */}
                         <div className="flex justify-between items-center relative">
                             {[1, 2, 3, 4, 5, 6].map((num) => {
@@ -359,12 +367,13 @@
                     </div>
 
                     {/* Ana Sayaç Alanı */}
-                    <div className="text-center mb-12 space-y-4">
-                        <h2 className={`text-sm tracking-[0.4em] uppercase font-bold transition-colors duration-300 ${sessionMode === 'WORK' ? 'text-yellow-500' : 'text-red-500'}`}>
+                    <div className="text-center flex-1 flex flex-col justify-center mb-8 w-full">
+                        <h2 className={`text-sm tracking-[0.4em] uppercase font-bold transition-colors duration-300 mb-2 ${sessionMode === 'WORK' ? 'text-yellow-500' : 'text-red-500'}`}>
                             {sessionMode === 'WORK' ? 'ÇALIŞMA MODU' : 'MOLA MODU'} {!isRunning && currentSessionSeconds > 0 ? '(DURAKLATILDI)' : ''}
                         </h2>
                         
-                        <div className={`text-[5rem] sm:text-[8rem] leading-none font-bold tabular-nums tracking-tighter animate-in fade-in duration-300 ${sessionMode === 'WORK' ? 'text-white' : 'text-red-600'} ${!isRunning ? 'opacity-50' : ''}`}>
+                        {/* Büyütülmüş Sayaç */}
+                        <div className={`text-[8rem] sm:text-[10rem] md:text-[13rem] leading-none font-bold tabular-nums tracking-tighter animate-in fade-in duration-300 ${sessionMode === 'WORK' ? 'text-white' : 'text-red-600'} ${!isRunning ? 'opacity-50' : ''}`}>
                             {formatTime(currentSessionSeconds)}
                         </div>
                         
@@ -381,7 +390,7 @@
                     </div>
 
                     {/* KONTROL BUTONLARI */}
-                    <div className="mb-20 relative z-20 flex items-center gap-6 justify-center min-h-[160px]">
+                    <div className="relative z-20 flex items-center gap-6 justify-center min-h-[140px] mb-8">
                         
                         {sessionMode === 'WORK' ? (
                             <>
@@ -414,7 +423,7 @@
                     </div>
 
                     {/* Alt İstatistikler */}
-                    <div className="w-full max-w-4xl flex justify-between px-10 sm:px-32 text-center pb-20">
+                    <div className="w-full max-w-4xl flex justify-between px-10 sm:px-32 text-center pb-24">
                         <div className="flex flex-col items-center">
                             <div className="text-gray-600 text-[10px] sm:text-xs uppercase tracking-widest mb-2 font-bold">Toplam Çalışma</div>
                             <div className="text-2xl sm:text-3xl font-mono text-yellow-100 font-light">{formatTime(totalWorkSeconds)}</div>
@@ -426,7 +435,7 @@
                         </div>
                     </div>
 
-                    {/* ALT BAR */}
+                    {/* ALT BAR (Tabana ve Yanlara Yapışık) */}
                     <div className="absolute bottom-0 left-0 w-full h-8 bg-gray-800 flex border-t border-black">
                         {[...Array(8)].map((_, i) => (
                             <div key={i} className="flex-1 border-r border-black relative overflow-hidden">
