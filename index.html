@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maraton Pomodoro</title>
+    
+    <!-- React ve ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel (JSX Derleyicisi) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        body {
+            background-color: black;
+            color: white;
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            overflow-x: hidden;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        svg {
+            display: inline-block;
+            vertical-align: middle;
+        }
+        /* Mola Modu İçin Yanıp Sönen Çerçeve Animasyonu */
+        @keyframes border-flash {
+            0%, 100% { 
+                border-color: rgba(185, 28, 28, 0.4); 
+                box-shadow: inset 0 0 30px rgba(185, 28, 28, 0.2); 
+            }
+            50% { 
+                border-color: rgba(255, 0, 0, 1); 
+                box-shadow: inset 0 0 100px rgba(255, 0, 0, 0.8); 
+            }
+        }
+        .break-mode-border {
+            border: 20px solid transparent; 
+            animation: border-flash 1.5s infinite ease-in-out;
+        }
+
+        /* --- BAŞARI FLAŞI ANİMASYONU --- */
+        @keyframes success-flash-anim {
+            0% { opacity: 0; background-color: rgba(34, 197, 94, 0); }
+            10% { opacity: 1; background-color: rgba(34, 197, 94, 0.8); }
+            100% { opacity: 0; background-color: rgba(34, 197, 94, 0); }
+        }
+        .success-flash-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 9999;
+            animation: success-flash-anim 1s ease-out forwards;
+        }
+
+        /* Progress Ring Animasyonu */
+        .progress-ring-circle {
+            transition: stroke-dashoffset 1s linear;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="root" class="w-full flex justify-center"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- SES EFEKTİ FONKSİYONU ---
+        const playSuccessSound = () => {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                
+                const ctx = new AudioContext();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                
+                const now = ctx.currentTime;
+                
+                // Melodik başarı sesi
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(523.25, now); // C5
+                osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.1); // E5
+                osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.2); // G5
+                osc.frequency.exponentialRampToValueAtTime(1046.50, now + 0.4); // C6
+                
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(0.3, now + 0.1);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+                
+                osc.start(now);
+                osc.stop(now + 0.8);
+            } catch (e) {
+                console.error("Ses çalınamadı:", e);
+            }
+        };
+
+        // --- İKON BİLEŞENLERİ ---
+        const Play = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+        );
+
+        const Pause = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <rect x="6" y="4" width="4" height="16"></rect>
+                <rect x="14" y="4" width="4" height="16"></rect>
+            </svg>
+        );
+
+        const Square = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none" className={className}>
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            </svg>
+        );
+
+        const RefreshCcw = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <path d="M3 2v6h6"></path>
+                <path d="M21 12A9 9 0 0 0 6 5.3L3 8"></path>
+                <path d="M21 22v-6h-6"></path>
+                <path d="M3 12a9 9 0 0 0 15 6.7l3-2.7"></path>
+            </svg>
+        );
+
+        const Trophy = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
+                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
+                <path d="M4 22h16"></path>
+                <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path>
+                <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path>
+                <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
+            </svg>
+        );
+
+        // --- ANA UYGULAMA ---
+        function App() {
+            const [isRunning, setIsRunning] = useState(false);
+            const [sessionMode, setSessionMode] = useState('WORK'); // 'WORK' | 'BREAK'
+            
+            const [totalWorkSeconds, setTotalWorkSeconds] = useState(0); 
+            const [totalBreakSeconds, setTotalBreakSeconds] = useState(0); 
+            const [currentSessionSeconds, setCurrentSessionSeconds] = useState(0); 
+            
+            const [showSuccessFlash, setShowSuccessFlash] = useState(false);
+            
+            const SET_DURATION = 11 * 60; // 660 Saniye
+            const CYCLE_LIMITS = [6, 5, 4, 3, 2, 1, 6, 5, 4, 3, 2, 1]; 
+            const TOTAL_TARGET_SETS = 42;
+            const TOTAL_TARGET_SECONDS = TOTAL_TARGET_SETS * SET_DURATION;
+
+            useEffect(() => {
+                let timer = null;
+                if (isRunning) {
+                    timer = setInterval(() => {
+                        setCurrentSessionSeconds(prev => prev + 1);
+                        if (sessionMode === 'WORK') {
+                            setTotalWorkSeconds(prev => prev + 1);
+                        } else {
+                            setTotalBreakSeconds(prev => prev + 1);
+                        }
+                    }, 1000);
+                }
+                return () => clearInterval(timer);
+            }, [isRunning, sessionMode]);
+
+            useEffect(() => {
+                if (totalWorkSeconds > 0 && totalWorkSeconds % SET_DURATION === 0) {
+                    setShowSuccessFlash(true);
+                    playSuccessSound();
+                    const timer = setTimeout(() => {
+                        setShowSuccessFlash(false);
+                    }, 1000);
+                    return () => clearTimeout(timer);
+                }
+            }, [totalWorkSeconds]);
+
+            const formatTime = (seconds) => {
+                const h = Math.floor(seconds / 3600);
+                const m = Math.floor((seconds % 3600) / 60);
+                const s = seconds % 60;
+                if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+                return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            };
+
+            const getCycleState = () => {
+                let completedSets = Math.floor(totalWorkSeconds / SET_DURATION);
+                if (completedSets >= TOTAL_TARGET_SETS) {
+                    return { lockedNumbers: [1,2,3,4,5,6], currentNumber: null, prevNumber: 1, phase: 3 };
+                }
+                let lockedNumbers = [];
+                let currentNumber = 0;
+                let prevNumber = 0;
+                let setsProcessed = 0;
+                let phase = 1; 
+                for (let i = 0; i < CYCLE_LIMITS.length; i++) {
+                    const cycleLength = CYCLE_LIMITS[i];
+                    const cycleEnd = setsProcessed + cycleLength; 
+                    if (completedSets < cycleEnd) {
+                        phase = i < 6 ? 1 : 2;
+                        const setsInThisCycle = completedSets - setsProcessed; 
+                        currentNumber = setsInThisCycle + 1; 
+                        prevNumber = setsInThisCycle > 0 ? setsInThisCycle : null;
+                        return { lockedNumbers, currentNumber, prevNumber, phase };
+                    }
+                    if (i === 5) { lockedNumbers = []; } else { lockedNumbers.push(cycleLength); }
+                    setsProcessed += cycleLength;
+                }
+                return { lockedNumbers, currentNumber, prevNumber, phase: 2 };
+            };
+
+            const { lockedNumbers, currentNumber, prevNumber, phase } = getCycleState();
+
+            // Progress hesaplaması (660s üzerinden)
+            const currentCycleProgress = (totalWorkSeconds % SET_DURATION) / SET_DURATION;
+            
+            // Aktif Çember SVG Bileşeni
+            const ActiveProgressRing = ({ progress }) => {
+                const radius = 46; 
+                const circumference = 2 * Math.PI * radius;
+                const strokeDashoffset = circumference - (progress * circumference);
+                
+                return (
+                    <div className="absolute top-0 left-0 w-full h-full pointer-events-none" style={{ transform: 'scale(1.15)' }}>
+                        <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                             {/* Arkaplan izi */}
+                             <circle
+                                 stroke="#1f2937" 
+                                 strokeWidth="6"
+                                 fill="transparent"
+                                 r={radius}
+                                 cx="50"
+                                 cy="50"
+                             />
+                             {/* İlerleme */}
+                             <circle
+                                 className="progress-ring-circle"
+                                 stroke="#FACC15" 
+                                 strokeWidth="6"
+                                 fill="transparent"
+                                 r={radius}
+                                 cx="50"
+                                 cy="50"
+                                 style={{ 
+                                     strokeDasharray: `${circumference} ${circumference}`, 
+                                     strokeDashoffset: strokeDashoffset,
+                                     strokeLinecap: "round"
+                                 }}
+                             />
+                        </svg>
+                    </div>
+                );
+            };
+
+            // Renk ve Stil Belirleme
+            const getIndicatorStyles = (num, rowId) => {
+                const isActive = phase === rowId && num === currentNumber;
+                
+                let baseClasses = "relative w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center rounded-full text-2xl sm:text-3xl font-black transition-all duration-500 bg-black ";
+                
+                if (phase > rowId) {
+                    return baseClasses + "text-green-500 border-[4px] border-green-500 opacity-50";
+                }
+                if (phase === rowId) {
+                    if (lockedNumbers.includes(num)) {
+                        return baseClasses + "text-green-500 border-[4px] border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.4)] opacity-60";
+                    }
+                    if (isActive) {
+                        // Aktif olanda border-[4px] kaldırıldı, yerine SVG Ring gelecek
+                        return baseClasses + "text-yellow-400 scale-110 shadow-[0_0_20px_rgba(250,204,21,0.6)] z-10";
+                    }
+                    if (num === prevNumber) {
+                         return baseClasses + "text-green-500 border-[4px] border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.6)]";
+                    }
+                }
+                return baseClasses + "text-gray-700 border-[4px] border-gray-800";
+            };
+
+            const togglePause = () => setIsRunning(!isRunning);
+            
+            const switchSessionMode = () => {
+                const newMode = sessionMode === 'WORK' ? 'BREAK' : 'WORK';
+                setSessionMode(newMode);
+                setCurrentSessionSeconds(0);
+                if (newMode === 'BREAK') {
+                    setIsRunning(true);
+                } else {
+                    setIsRunning(false);
+                }
+            };
+
+            const resetAll = () => {
+                setIsRunning(false);
+                setSessionMode('WORK');
+                setTotalWorkSeconds(0);
+                setTotalBreakSeconds(0);
+                setCurrentSessionSeconds(0);
+            };
+
+            const fastForward = () => {
+                const currentMod = totalWorkSeconds % SET_DURATION;
+                const missing = SET_DURATION - currentMod;
+                setTotalWorkSeconds(prev => prev + missing + 1); 
+            };
+
+            const progressPercent = Math.min((totalWorkSeconds / TOTAL_TARGET_SECONDS) * 100, 100);
+
+            return (
+                <div 
+                    className={`w-full max-w-[1920px] aspect-video flex flex-col items-center justify-center bg-black text-white font-sans select-none overflow-hidden relative pb-10 transition-all duration-500 ${sessionMode === 'BREAK' ? 'break-mode-border' : ''}`}
+                    style={{ transform: "scale(0.85)", transformOrigin: "top center" }}
+                >
+                    
+                    {showSuccessFlash && <div className="success-flash-overlay"></div>}
+
+                    {/* Üst Göstergeler */}
+                    <div className="w-full max-w-xl flex flex-col gap-6 mb-10 sm:mb-16 relative z-10 px-4 mt-6">
+                        {/* 1. Sıra */}
+                        <div className="flex justify-between items-center relative">
+                            {[1, 2, 3, 4, 5, 6].map((num) => {
+                                const isActive = phase === 1 && num === currentNumber;
+                                return (
+                                    <div key={`r1-${num}`} className={getIndicatorStyles(num, 1)}>
+                                        {isActive && <ActiveProgressRing progress={currentCycleProgress} />}
+                                        <span className="relative z-10">{num}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        {/* 2. Sıra */}
+                        <div className="flex justify-between items-center relative">
+                            {[1, 2, 3, 4, 5, 6].map((num) => {
+                                const isActive = phase === 2 && num === currentNumber;
+                                return (
+                                    <div key={`r2-${num}`} className={getIndicatorStyles(num, 2)}>
+                                        {isActive && <ActiveProgressRing progress={currentCycleProgress} />}
+                                        <span className="relative z-10">{num}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Ana Sayaç Alanı */}
+                    <div className="text-center mb-12 space-y-4">
+                        <h2 className={`text-sm tracking-[0.4em] uppercase font-bold transition-colors duration-300 ${sessionMode === 'WORK' ? 'text-yellow-500' : 'text-red-500'}`}>
+                            {sessionMode === 'WORK' ? 'ÇALIŞMA MODU' : 'MOLA MODU'} {!isRunning && currentSessionSeconds > 0 ? '(DURAKLATILDI)' : ''}
+                        </h2>
+                        
+                        <div className={`text-[5rem] sm:text-[8rem] leading-none font-bold tabular-nums tracking-tighter animate-in fade-in duration-300 ${sessionMode === 'WORK' ? 'text-white' : 'text-red-600'} ${!isRunning ? 'opacity-50' : ''}`}>
+                            {formatTime(currentSessionSeconds)}
+                        </div>
+                        
+                        <div className="text-gray-500 text-sm mt-4 font-medium tracking-wide flex items-center justify-center gap-2">
+                            {currentNumber ? (
+                                <>
+                                    <span className="bg-gray-900 px-2 py-1 rounded text-gray-400 text-xs uppercase">Anlık Hedef</span>
+                                    <span className="text-white font-bold text-xl">{currentNumber}</span>
+                                    <span className="text-gray-600">/</span>
+                                    <span>{Math.max(...(CYCLE_LIMITS.slice((phase-1)*6, phase*6).filter(l => !lockedNumbers.includes(l)) || [0]))}</span>
+                                </>
+                            ) : <span className="text-green-500 font-bold flex items-center gap-2"><Trophy size={16}/> TEBRİKLER!</span>}
+                        </div>
+                    </div>
+
+                    {/* KONTROL BUTONLARI */}
+                    <div className="mb-20 relative z-20 flex items-center gap-6 justify-center min-h-[160px]">
+                        
+                        {sessionMode === 'WORK' ? (
+                            <>
+                                {/* 1. BAŞLAT / DURAKLAT (Eski haline döndürüldü) */}
+                                <div className="flex flex-col items-center gap-2">
+                                     <button onClick={togglePause} className={`w-24 h-24 sm:w-28 sm:h-28 rounded-full flex items-center justify-center border-[6px] transition-all duration-300 hover:scale-105 active:scale-95 group ${isRunning ? 'border-yellow-400 text-yellow-400 bg-yellow-400/5' : 'border-green-500 text-green-500 bg-green-500/10 shadow-[0_0_30px_rgba(34,197,94,0.3)]'}`}>
+                                         {isRunning ? <Pause size={40} className="sm:w-12 sm:h-12" /> : <Play size={40} className="ml-2 sm:w-12 sm:h-12" />}
+                                     </button>
+                                     <span className="text-xs uppercase tracking-widest text-gray-500 font-bold">{getPlayButtonText(isRunning, currentSessionSeconds)}</span>
+                                </div>
+
+                                {/* 2. MOLA VER */}
+                                {(isRunning || currentSessionSeconds > 0) && (
+                                    <div className="flex flex-col items-center gap-2 animate-in fade-in zoom-in duration-300">
+                                        <button onClick={switchSessionMode} className="w-24 h-24 sm:w-28 sm:h-28 rounded-full flex items-center justify-center border-[6px] border-red-600 text-red-600 hover:bg-red-600/10 transition-all duration-300 hover:scale-105 active:scale-95">
+                                            <Square size={32} className="sm:w-10 sm:h-10" /> 
+                                        </button>
+                                        <span className="text-xs uppercase tracking-widest text-gray-500 font-bold">MOLA VER</span>
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <div className="flex flex-col items-center gap-2">
+                                <button onClick={switchSessionMode} className="w-24 h-24 sm:w-28 sm:h-28 rounded-full flex items-center justify-center border-[6px] border-green-500 text-green-500 bg-green-500/10 shadow-[0_0_40px_rgba(34,197,94,0.4)] transition-all duration-300 hover:scale-105 active:scale-95 animate-pulse">
+                                    <Play size={40} className="ml-2 sm:w-12 sm:h-12" />
+                                </button>
+                                <span className="text-xs uppercase tracking-widest text-green-500 font-bold">ÇALIŞMAYA DÖN</span>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Alt İstatistikler */}
+                    <div className="w-full max-w-4xl flex justify-between px-10 sm:px-32 text-center pb-20">
+                        <div className="flex flex-col items-center">
+                            <div className="text-gray-600 text-[10px] sm:text-xs uppercase tracking-widest mb-2 font-bold">Toplam Çalışma</div>
+                            <div className="text-2xl sm:text-3xl font-mono text-yellow-100 font-light">{formatTime(totalWorkSeconds)}</div>
+                        </div>
+                        <div className="h-12 w-px bg-gray-900 self-center"></div>
+                        <div className="flex flex-col items-center">
+                            <div className="text-gray-600 text-[10px] sm:text-xs uppercase tracking-widest mb-2 font-bold">Toplam Mola</div>
+                            <div className="text-2xl sm:text-3xl font-mono text-blue-100 font-light">{formatTime(totalBreakSeconds)}</div>
+                        </div>
+                    </div>
+
+                    {/* ALT BAR */}
+                    <div className="absolute bottom-0 left-0 w-full h-8 bg-gray-800 flex border-t border-black">
+                        {[...Array(8)].map((_, i) => (
+                            <div key={i} className="flex-1 border-r border-black relative overflow-hidden">
+                                <div className="absolute top-0 left-0 h-full bg-green-600 transition-all duration-1000 ease-linear" style={{ width: `${Math.max(0, Math.min(100, (progressPercent - (i * 12.5)) * 8))}%` }}></div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Gizli Test Butonları */}
+                    <div className="fixed bottom-12 right-4 flex gap-2 opacity-10 hover:opacity-100 transition-opacity z-50">
+                        <button onClick={fastForward} className="p-2 text-[10px] border border-gray-800 text-gray-500 rounded hover:bg-gray-900" title="+11dk">Test</button>
+                        <button onClick={resetAll} className="p-2 bg-red-900/10 text-red-800 rounded hover:bg-red-900 hover:text-white"><RefreshCcw size={14} /></button>
+                    </div>
+
+                </div>
+            );
+        }
+        
+        // Helper
+        const getPlayButtonText = (isRunning, currentSessionSeconds) => {
+             if (isRunning) return "DURAKLAT";
+             if (currentSessionSeconds === 0) return "BAŞLA";
+             return "DEVAM ET";
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
