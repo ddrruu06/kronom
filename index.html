@@ -74,10 +74,18 @@
 </head>
 <body>
 
-    <div id="root" class="w-full flex justify-center"></div>
+    <div id="root" class="w-full flex justify-center relative"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
+
+        // --- ARKA PLAN RESİMLERİ ---
+        const bgImages = [
+            'gorsela.jpg',
+            'gorselb.jpg',
+            'gorselc.jpg',
+            'gorseld.jpg'
+        ];
 
         // --- SES EFEKTİ FONKSİYONU ---
         const playSuccessSound = () => {
@@ -152,6 +160,15 @@
             </svg>
         );
 
+        const ImageIcon = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+        );
+
+
         // --- ANA UYGULAMA ---
         function App() {
             const [isRunning, setIsRunning] = useState(false);
@@ -162,11 +179,40 @@
             const [currentSessionSeconds, setCurrentSessionSeconds] = useState(0); 
             
             const [showSuccessFlash, setShowSuccessFlash] = useState(false);
+
+            // --- ARKA PLAN YÖNETİMİ ---
+            const [currentBgIndex, setCurrentBgIndex] = useState(0);
+            const [bgBrightness, setBgBrightness] = useState(50); // 0-100 arası
             
             const SET_DURATION = 11 * 60; // 660 Saniye
             const CYCLE_LIMITS = [6, 5, 4, 3, 2, 1, 6, 5, 4, 3, 2, 1]; 
             const TOTAL_TARGET_SETS = 42;
             const TOTAL_TARGET_SECONDS = TOTAL_TARGET_SETS * SET_DURATION;
+            
+            const TARGET_NUMBER = 42; // Sabit hedef 42 olarak güncellendi
+            const BAR_TARGET_SECONDS = 8 * 60 * 60; // Bar için 8 saat (28800 saniye)
+
+            // --- MANUEL SÜRE AYARLAMA ---
+            const adjustTotalWork = (minutes) => {
+                setTotalWorkSeconds(prev => Math.max(0, prev + minutes * 60));
+            };
+            
+            const adjustTotalBreak = (minutes) => {
+                setTotalBreakSeconds(prev => Math.max(0, prev + minutes * 60));
+            };
+
+            // --- ARKA PLAN FONKSİYONLARI ---
+            const nextBackground = () => {
+                setCurrentBgIndex(prev => (prev + 1) % bgImages.length);
+            };
+
+            const increaseBrightness = () => {
+                setBgBrightness(prev => Math.min(100, prev + 10));
+            };
+
+            const decreaseBrightness = () => {
+                setBgBrightness(prev => Math.max(0, prev - 10));
+            };
 
             useEffect(() => {
                 let timer = null;
@@ -204,9 +250,10 @@
 
             const getCycleState = () => {
                 let completedSets = Math.floor(totalWorkSeconds / SET_DURATION);
-                if (completedSets >= TOTAL_TARGET_SETS) {
-                    return { lockedNumbers: [1,2,3,4,5,6], currentNumber: null, prevNumber: 1, phase: 3 };
+                if (completedSets >= TARGET_NUMBER) {
+                    return { lockedNumbers: [1,2,3,4,5,6], currentNumber: null, prevNumber: 6, phase: 3 };
                 }
+
                 let lockedNumbers = [];
                 let currentNumber = 0;
                 let prevNumber = 0;
@@ -229,11 +276,15 @@
             };
 
             const { lockedNumbers, currentNumber, prevNumber, phase } = getCycleState();
+            
+            useEffect(() => {
+                if (Math.floor(totalWorkSeconds / SET_DURATION) > TARGET_NUMBER && isRunning && sessionMode === 'WORK') {
+                    resetAll();
+                }
+            }, [totalWorkSeconds, isRunning, sessionMode]);
 
-            // Progress hesaplaması (660s üzerinden)
             const currentCycleProgress = (totalWorkSeconds % SET_DURATION) / SET_DURATION;
             
-            // Aktif Çember SVG Bileşeni
             const ActiveProgressRing = ({ progress }) => {
                 const radius = 46; 
                 const circumference = 2 * Math.PI * radius;
@@ -242,7 +293,6 @@
                 return (
                     <div className="absolute top-0 left-0 w-full h-full pointer-events-none" style={{ transform: 'scale(1.15)' }}>
                         <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                             {/* Arkaplan izi */}
                              <circle
                                  stroke="#1f2937" 
                                  strokeWidth="6"
@@ -251,7 +301,6 @@
                                  cx="50"
                                  cy="50"
                              />
-                             {/* İlerleme */}
                              <circle
                                  className="progress-ring-circle"
                                  stroke="#FACC15" 
@@ -271,28 +320,31 @@
                 );
             };
 
-            // Renk ve Stil Belirleme
             const getIndicatorStyles = (num, rowId) => {
                 const isActive = phase === rowId && num === currentNumber;
+                const isTargetReached = Math.floor(totalWorkSeconds / SET_DURATION) >= TARGET_NUMBER;
+
+                let baseClasses = "relative w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center rounded-full text-2xl sm:text-3xl font-black transition-all duration-500 ";
                 
-                let baseClasses = "relative w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center rounded-full text-2xl sm:text-3xl font-black transition-all duration-500 bg-black ";
-                
+                if (isTargetReached) {
+                    return baseClasses + "text-green-500 border-[4px] border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.8)] bg-black/50";
+                }
+
                 if (phase > rowId) {
-                    return baseClasses + "text-green-500 border-[4px] border-green-500 opacity-50";
+                    return baseClasses + "text-green-500 border-[4px] border-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)] bg-black/50";
                 }
                 if (phase === rowId) {
                     if (lockedNumbers.includes(num)) {
-                        return baseClasses + "text-green-500 border-[4px] border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.4)] opacity-60";
+                        return baseClasses + "text-green-500 border-[4px] border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.6)] bg-black/50";
                     }
                     if (isActive) {
-                        // Aktif olanda border-[4px] kaldırıldı, yerine SVG Ring gelecek
-                        return baseClasses + "text-yellow-400 scale-110 shadow-[0_0_20px_rgba(250,204,21,0.6)] z-10";
+                        return baseClasses + "text-yellow-400 scale-110 shadow-[0_0_20px_rgba(250,204,21,0.6)] z-10 bg-black/50";
                     }
                     if (num === prevNumber) {
-                         return baseClasses + "text-green-500 border-[4px] border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.6)]";
+                         return baseClasses + "text-green-500 border-[4px] border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.6)] bg-black/50";
                     }
                 }
-                return baseClasses + "text-gray-700 border-[4px] border-gray-800";
+                return baseClasses + "text-gray-400 border-[4px] border-gray-700 bg-black/50";
             };
 
             const togglePause = () => setIsRunning(!isRunning);
@@ -322,135 +374,186 @@
                 setTotalWorkSeconds(prev => prev + missing + 1); 
             };
 
-            const progressPercent = Math.min((totalWorkSeconds / TOTAL_TARGET_SECONDS) * 100, 100);
+            // Bar için progress hesaplaması (8 saat üzerinden)
+            const progressPercent = Math.min((totalWorkSeconds / BAR_TARGET_SECONDS) * 100, 100);
+            
+            // Arka plan parlaklık opaklığı (0 -> 1, 100 -> 0)
+            const bgOverlayOpacity = 1 - (bgBrightness / 100);
 
             return (
-                <div 
-                    className={`w-full max-w-[1920px] flex flex-col items-center relative transition-all duration-500 bg-black text-white font-sans select-none overflow-hidden ${sessionMode === 'BREAK' ? 'break-mode-border' : ''}`}
-                    style={{ 
-                        aspectRatio: "52/30", 
-                        transform: "scale(0.85)", 
-                        transformOrigin: "center center",
-                        justifyContent: "flex-start",
-                        paddingTop: "8vh" // Üstten güzel bir boşluk
-                    }}
-                >
-                    
-                    {showSuccessFlash && <div className="success-flash-overlay"></div>}
+                <>
+                    {/* --- ARKA PLAN KATMANI --- */}
+                    <div 
+                        className="fixed top-0 left-0 w-full h-full bg-cover bg-center transition-all duration-1000 -z-20"
+                        style={{ backgroundImage: `url('${bgImages[currentBgIndex]}')` }}
+                    ></div>
+                    {/* --- PARLAKLIK KATMANI (SİYAH OVERLAY) --- */}
+                    <div 
+                        className="fixed top-0 left-0 w-full h-full bg-black transition-opacity duration-300 -z-10"
+                        style={{ opacity: bgOverlayOpacity }}
+                    ></div>
 
-                    {/* Üst Göstergeler */}
-                    <div className="w-full max-w-xl flex flex-col gap-6 mb-8 relative z-10 px-4">
-                        {/* 1. Sıra */}
-                        <div className="flex justify-between items-center relative">
-                            {[1, 2, 3, 4, 5, 6].map((num) => {
-                                const isActive = phase === 1 && num === currentNumber;
-                                return (
-                                    <div key={`r1-${num}`} className={getIndicatorStyles(num, 1)}>
-                                        {isActive && <ActiveProgressRing progress={currentCycleProgress} />}
-                                        <span className="relative z-10">{num}</span>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                        {/* 2. Sıra */}
-                        <div className="flex justify-between items-center relative">
-                            {[1, 2, 3, 4, 5, 6].map((num) => {
-                                const isActive = phase === 2 && num === currentNumber;
-                                return (
-                                    <div key={`r2-${num}`} className={getIndicatorStyles(num, 2)}>
-                                        {isActive && <ActiveProgressRing progress={currentCycleProgress} />}
-                                        <span className="relative z-10">{num}</span>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
+                    <div 
+                        className={`w-full max-w-[1920px] flex flex-col items-center relative transition-all duration-500 text-white font-sans select-none overflow-hidden ${sessionMode === 'BREAK' ? 'break-mode-border' : ''}`}
+                        style={{ 
+                            aspectRatio: "52/30", 
+                            transform: "scale(0.85)", 
+                            transformOrigin: "center center",
+                            justifyContent: "flex-start",
+                        }}
+                    >
+                        
+                        {showSuccessFlash && <div className="success-flash-overlay"></div>}
 
-                    {/* Ana Sayaç Alanı */}
-                    <div className="text-center flex-1 flex flex-col justify-center mb-8 w-full">
-                        <h2 className={`text-sm tracking-[0.4em] uppercase font-bold transition-colors duration-300 mb-2 ${sessionMode === 'WORK' ? 'text-yellow-500' : 'text-red-500'}`}>
-                            {sessionMode === 'WORK' ? 'ÇALIŞMA MODU' : 'MOLA MODU'} {!isRunning && currentSessionSeconds > 0 ? '(DURAKLATILDI)' : ''}
-                        </h2>
-                        
-                        {/* Büyütülmüş Sayaç */}
-                        <div className={`text-[8rem] sm:text-[10rem] md:text-[13rem] leading-none font-bold tabular-nums tracking-tighter animate-in fade-in duration-300 ${sessionMode === 'WORK' ? 'text-white' : 'text-red-600'} ${!isRunning ? 'opacity-50' : ''}`}>
-                            {formatTime(currentSessionSeconds)}
+                        {/* --- ARKA PLAN KONTROL TUŞLARI (SOL ÜST) --- */}
+                        <div className="absolute top-6 left-6 z-50 flex items-center gap-3">
+                            <button 
+                                onClick={decreaseBrightness} 
+                                className="w-10 h-10 flex items-center justify-center rounded-lg bg-black/30 hover:bg-black/70 text-gray-400 hover:text-white font-bold text-2xl transition-all duration-300 backdrop-blur-sm opacity-50 hover:opacity-100"
+                                title="Parlaklığı Azalt"
+                            >
+                                -
+                            </button>
+                            
+                            <button 
+                                onClick={nextBackground} 
+                                className="w-10 h-10 flex items-center justify-center rounded-lg bg-black/30 hover:bg-black/70 text-gray-400 hover:text-white transition-all duration-300 backdrop-blur-sm opacity-50 hover:opacity-100"
+                                title="Görüntüyü Değiştir"
+                            >
+                                <ImageIcon size={22} />
+                            </button>
+                            
+                            <button 
+                                onClick={increaseBrightness} 
+                                className="w-10 h-10 flex items-center justify-center rounded-lg bg-black/30 hover:bg-black/70 text-gray-400 hover:text-white font-bold text-2xl transition-all duration-300 backdrop-blur-sm opacity-50 hover:opacity-100"
+                                title="Parlaklığı Arttır"
+                            >
+                                +
+                            </button>
                         </div>
-                        
-                        <div className="text-gray-500 text-sm mt-4 font-medium tracking-wide flex items-center justify-center gap-2">
-                            {currentNumber ? (
+
+                        {/* Üst Göstergeler */}
+                        <div className="w-full max-w-xl flex flex-col gap-6 mb-8 relative z-10 px-4 mt-8">
+                            {/* 1. Sıra */}
+                            <div className="flex justify-between items-center relative">
+                                {[1, 2, 3, 4, 5, 6].map((num) => {
+                                    const isActive = phase === 1 && num === currentNumber;
+                                    return (
+                                        <div key={`r1-${num}`} className={getIndicatorStyles(num, 1)}>
+                                            {isActive && <ActiveProgressRing progress={currentCycleProgress} />}
+                                            <span className="relative z-10">{num}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            {/* 2. Sıra */}
+                            <div className="flex justify-between items-center relative">
+                                {[1, 2, 3, 4, 5, 6].map((num) => {
+                                    const isActive = phase === 2 && num === currentNumber;
+                                    return (
+                                        <div key={`r2-${num}`} className={getIndicatorStyles(num, 2)}>
+                                            {isActive && <ActiveProgressRing progress={currentCycleProgress} />}
+                                            <span className="relative z-10">{num}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Ana Sayaç Alanı */}
+                        <div className="text-center flex-1 flex flex-col justify-center mb-8 w-full relative z-10">
+                            <h2 className={`text-sm tracking-[0.4em] uppercase font-bold transition-colors duration-300 mb-2 drop-shadow-md ${sessionMode === 'WORK' ? 'text-yellow-500' : 'text-red-500'}`}>
+                                {sessionMode === 'WORK' ? 'ÇALIŞMA MODU' : 'MOLA MODU'} {!isRunning && currentSessionSeconds > 0 ? '(DURAKLATILDI)' : ''}
+                            </h2>
+                            
+                            {/* Büyütülmüş Sayaç */}
+                            <div className={`text-[8rem] sm:text-[10rem] md:text-[13rem] leading-none font-bold tabular-nums tracking-tighter animate-in fade-in duration-300 drop-shadow-xl ${sessionMode === 'WORK' ? 'text-white' : 'text-red-600'} ${!isRunning ? 'opacity-50' : ''}`}>
+                                {formatTime(currentSessionSeconds)}
+                            </div>
+                            
+                            <div className="text-gray-300 text-sm mt-4 font-medium tracking-wide flex items-center justify-center gap-2 drop-shadow-md">
+                                {Math.floor(totalWorkSeconds / SET_DURATION) < TARGET_NUMBER ? (
+                                    <>
+                                        <span className="bg-black/50 px-2 py-1 rounded text-gray-300 text-xs uppercase">Anlık Hedef</span>
+                                        <span className="text-white font-bold text-xl">{Math.floor(totalWorkSeconds / SET_DURATION) + 1}</span>
+                                        <span className="text-gray-400">/</span>
+                                        <span className="text-white font-bold text-xl">{TARGET_NUMBER}</span>
+                                    </>
+                                ) : <span className="text-green-400 font-bold flex items-center gap-2 text-lg"><Trophy size={20}/> HEDEF TAMAMLANDI! ({TARGET_NUMBER}/{TARGET_NUMBER})</span>}
+                            </div>
+                        </div>
+
+                        {/* KONTROL BUTONLARI */}
+                        <div className="relative z-20 flex items-center gap-6 justify-center min-h-[140px] mb-8">
+                            
+                            {sessionMode === 'WORK' ? (
                                 <>
-                                    <span className="bg-gray-900 px-2 py-1 rounded text-gray-400 text-xs uppercase">Anlık Hedef</span>
-                                    <span className="text-white font-bold text-xl">{currentNumber}</span>
-                                    <span className="text-gray-600">/</span>
-                                    <span>{Math.max(...(CYCLE_LIMITS.slice((phase-1)*6, phase*6).filter(l => !lockedNumbers.includes(l)) || [0]))}</span>
-                                </>
-                            ) : <span className="text-green-500 font-bold flex items-center gap-2"><Trophy size={16}/> TEBRİKLER!</span>}
-                        </div>
-                    </div>
-
-                    {/* KONTROL BUTONLARI */}
-                    <div className="relative z-20 flex items-center gap-6 justify-center min-h-[140px] mb-8">
-                        
-                        {sessionMode === 'WORK' ? (
-                            <>
-                                {/* 1. BAŞLAT / DURAKLAT (Eski haline döndürüldü) */}
-                                <div className="flex flex-col items-center gap-2">
-                                     <button onClick={togglePause} className={`w-24 h-24 sm:w-28 sm:h-28 rounded-full flex items-center justify-center border-[6px] transition-all duration-300 hover:scale-105 active:scale-95 group ${isRunning ? 'border-yellow-400 text-yellow-400 bg-yellow-400/5' : 'border-green-500 text-green-500 bg-green-500/10 shadow-[0_0_30px_rgba(34,197,94,0.3)]'}`}>
-                                         {isRunning ? <Pause size={40} className="sm:w-12 sm:h-12" /> : <Play size={40} className="ml-2 sm:w-12 sm:h-12" />}
-                                     </button>
-                                     <span className="text-xs uppercase tracking-widest text-gray-500 font-bold">{getPlayButtonText(isRunning, currentSessionSeconds)}</span>
-                                </div>
-
-                                {/* 2. MOLA VER */}
-                                {(isRunning || currentSessionSeconds > 0) && (
-                                    <div className="flex flex-col items-center gap-2 animate-in fade-in zoom-in duration-300">
-                                        <button onClick={switchSessionMode} className="w-24 h-24 sm:w-28 sm:h-28 rounded-full flex items-center justify-center border-[6px] border-red-600 text-red-600 hover:bg-red-600/10 transition-all duration-300 hover:scale-105 active:scale-95">
-                                            <Square size={32} className="sm:w-10 sm:h-10" /> 
-                                        </button>
-                                        <span className="text-xs uppercase tracking-widest text-gray-500 font-bold">MOLA VER</span>
+                                    {/* 1. BAŞLAT / DURAKLAT */}
+                                    <div className="flex flex-col items-center gap-2">
+                                         <button onClick={togglePause} className={`w-24 h-24 sm:w-28 sm:h-28 rounded-full flex items-center justify-center border-[6px] transition-all duration-300 hover:scale-105 active:scale-95 group backdrop-blur-sm ${isRunning ? 'border-yellow-400 text-yellow-400 bg-yellow-400/10' : 'border-green-500 text-green-500 bg-green-500/10 shadow-[0_0_30px_rgba(34,197,94,0.3)]'}`}>
+                                             {isRunning ? <Pause size={40} className="sm:w-12 sm:h-12" /> : <Play size={40} className="ml-2 sm:w-12 sm:h-12" />}
+                                         </button>
+                                         <span className="text-xs uppercase tracking-widest text-gray-300 font-bold drop-shadow-sm">{getPlayButtonText(isRunning, currentSessionSeconds)}</span>
                                     </div>
-                                )}
-                            </>
-                        ) : (
-                            <div className="flex flex-col items-center gap-2">
-                                <button onClick={switchSessionMode} className="w-24 h-24 sm:w-28 sm:h-28 rounded-full flex items-center justify-center border-[6px] border-green-500 text-green-500 bg-green-500/10 shadow-[0_0_40px_rgba(34,197,94,0.4)] transition-all duration-300 hover:scale-105 active:scale-95 animate-pulse">
-                                    <Play size={40} className="ml-2 sm:w-12 sm:h-12" />
-                                </button>
-                                <span className="text-xs uppercase tracking-widest text-green-500 font-bold">ÇALIŞMAYA DÖN</span>
-                            </div>
-                        )}
-                    </div>
 
-                    {/* Alt İstatistikler */}
-                    <div className="w-full max-w-4xl flex justify-between px-10 sm:px-32 text-center pb-24">
-                        <div className="flex flex-col items-center">
-                            <div className="text-gray-600 text-[10px] sm:text-xs uppercase tracking-widest mb-2 font-bold">Toplam Çalışma</div>
-                            <div className="text-2xl sm:text-3xl font-mono text-yellow-100 font-light">{formatTime(totalWorkSeconds)}</div>
+                                    {/* 2. MOLA VER */}
+                                    {(isRunning || currentSessionSeconds > 0) && (
+                                        <div className="flex flex-col items-center gap-2 animate-in fade-in zoom-in duration-300">
+                                            <button onClick={switchSessionMode} className="w-24 h-24 sm:w-28 sm:h-28 rounded-full flex items-center justify-center border-[6px] border-red-600 text-red-600 hover:bg-red-600/10 transition-all duration-300 hover:scale-105 active:scale-95 backdrop-blur-sm">
+                                                <Square size={32} className="sm:w-10 sm:h-10" /> 
+                                            </button>
+                                            <span className="text-xs uppercase tracking-widest text-gray-300 font-bold drop-shadow-sm">MOLA VER</span>
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <div className="flex flex-col items-center gap-2">
+                                    <button onClick={switchSessionMode} className="w-24 h-24 sm:w-28 sm:h-28 rounded-full flex items-center justify-center border-[6px] border-green-500 text-green-500 bg-green-500/10 shadow-[0_0_40px_rgba(34,197,94,0.4)] transition-all duration-300 hover:scale-105 active:scale-95 animate-pulse backdrop-blur-sm">
+                                        <Play size={40} className="ml-2 sm:w-12 sm:h-12" />
+                                    </button>
+                                    <span className="text-xs uppercase tracking-widest text-green-500 font-bold drop-shadow-sm">ÇALIŞMAYA DÖN</span>
+                                </div>
+                            )}
                         </div>
-                        <div className="h-12 w-px bg-gray-900 self-center"></div>
-                        <div className="flex flex-col items-center">
-                            <div className="text-gray-600 text-[10px] sm:text-xs uppercase tracking-widest mb-2 font-bold">Toplam Mola</div>
-                            <div className="text-2xl sm:text-3xl font-mono text-blue-100 font-light">{formatTime(totalBreakSeconds)}</div>
-                        </div>
-                    </div>
 
-                    {/* ALT BAR (Tabana ve Yanlara Yapışık) */}
-                    <div className="absolute bottom-0 left-0 w-full h-8 bg-gray-800 flex border-t border-black">
-                        {[...Array(8)].map((_, i) => (
-                            <div key={i} className="flex-1 border-r border-black relative overflow-hidden">
-                                <div className="absolute top-0 left-0 h-full bg-green-600 transition-all duration-1000 ease-linear" style={{ width: `${Math.max(0, Math.min(100, (progressPercent - (i * 12.5)) * 8))}%` }}></div>
+                        {/* Alt İstatistikler (Manuel Butonlar Eklendi) */}
+                        <div className="w-full max-w-4xl flex justify-between px-10 sm:px-32 text-center pb-24 relative z-10">
+                            <div className="flex flex-col items-center group bg-black/30 p-2 rounded-xl backdrop-blur-sm">
+                                <div className="text-gray-400 text-[10px] sm:text-xs uppercase tracking-widest mb-2 font-bold">Toplam Çalışma</div>
+                                <div className="flex items-center gap-3">
+                                    <button onClick={() => adjustTotalWork(-11)} className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1 font-bold text-xl" title="-11 Dk">-</button>
+                                    <div className="text-2xl sm:text-3xl font-mono text-yellow-100 font-light tabular-nums w-40 drop-shadow-md">{formatTime(totalWorkSeconds)}</div>
+                                    <button onClick={() => adjustTotalWork(11)} className="text-gray-300 hover:text-green-500 transition-colors opacity-0 group-hover:opacity-100 p-1 font-bold text-xl" title="+11 Dk">+</button>
+                                </div>
                             </div>
-                        ))}
-                    </div>
+                            <div className="h-12 w-px bg-gray-700 self-center"></div>
+                            <div className="flex flex-col items-center group bg-black/30 p-2 rounded-xl backdrop-blur-sm">
+                                <div className="text-gray-400 text-[10px] sm:text-xs uppercase tracking-widest mb-2 font-bold">Toplam Mola</div>
+                                <div className="flex items-center gap-3">
+                                    <button onClick={() => adjustTotalBreak(-11)} className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1 font-bold text-xl" title="-11 Dk">-</button>
+                                    <div className="text-2xl sm:text-3xl font-mono text-blue-100 font-light tabular-nums w-40 drop-shadow-md">{formatTime(totalBreakSeconds)}</div>
+                                    <button onClick={() => adjustTotalBreak(11)} className="text-gray-300 hover:text-green-500 transition-colors opacity-0 group-hover:opacity-100 p-1 font-bold text-xl" title="+11 Dk">+</button>
+                                </div>
+                            </div>
+                        </div>
 
-                    {/* Gizli Test Butonları */}
-                    <div className="fixed bottom-12 right-4 flex gap-2 opacity-10 hover:opacity-100 transition-opacity z-50">
-                        <button onClick={fastForward} className="p-2 text-[10px] border border-gray-800 text-gray-500 rounded hover:bg-gray-900" title="+11dk">Test</button>
-                        <button onClick={resetAll} className="p-2 bg-red-900/10 text-red-800 rounded hover:bg-red-900 hover:text-white"><RefreshCcw size={14} /></button>
-                    </div>
+                        {/* ALT BAR (Tabana ve Yanlara Yapışık) */}
+                        <div className="absolute bottom-0 left-0 w-full h-8 bg-gray-800/50 backdrop-blur-md flex border-t border-black/50 z-20">
+                            {[...Array(8)].map((_, i) => (
+                                <div key={i} className="flex-1 border-r border-black/50 relative overflow-hidden">
+                                    <div className="absolute top-0 left-0 h-full bg-green-600/80 transition-all duration-1000 ease-linear" style={{ width: `${Math.max(0, Math.min(100, (progressPercent - (i * 12.5)) * 8))}%` }}></div>
+                                </div>
+                            ))}
+                        </div>
 
-                </div>
+                        {/* Gizli Test Butonları */}
+                        <div className="fixed bottom-12 right-4 flex gap-2 opacity-10 hover:opacity-100 transition-opacity z-50">
+                            <button onClick={fastForward} className="p-2 text-[10px] border border-gray-600 text-gray-400 rounded hover:bg-gray-900/80 bg-black/50 backdrop-blur-sm" title="+11dk">Test</button>
+                            <button onClick={resetAll} className="p-2 bg-red-900/30 text-red-400 rounded hover:bg-red-900/80 hover:text-white backdrop-blur-sm"><RefreshCcw size={14} /></button>
+                        </div>
+
+                    </div>
+                </>
             );
         }
         
