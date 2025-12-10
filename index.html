@@ -31,21 +31,6 @@
             display: inline-block;
             vertical-align: middle;
         }
-        /* Mola Modu İçin Yanıp Sönen Çerçeve Animasyonu */
-        @keyframes border-flash {
-            0%, 100% { 
-                border-color: rgba(185, 28, 28, 0.4); 
-                box-shadow: inset 0 0 30px rgba(185, 28, 28, 0.2); 
-            }
-            50% { 
-                border-color: rgba(255, 0, 0, 1); 
-                box-shadow: inset 0 0 100px rgba(255, 0, 0, 0.8); 
-            }
-        }
-        .break-mode-border {
-            border: 20px solid transparent; 
-            animation: border-flash 1.5s infinite ease-in-out;
-        }
 
         /* --- BAŞARI FLAŞI ANİMASYONU --- */
         @keyframes success-flash-anim {
@@ -170,6 +155,42 @@
             </svg>
         );
 
+        // --- AKTİF ÇEMBER BİLEŞENİ (Performans için dışarı taşındı) ---
+        const ActiveProgressRing = ({ progress }) => {
+            const radius = 46; 
+            const circumference = 2 * Math.PI * radius;
+            const strokeDashoffset = circumference - (progress * circumference);
+            
+            return (
+                <div className="absolute top-0 left-0 w-full h-full pointer-events-none" style={{ transform: 'scale(1.15)' }}>
+                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                            <circle
+                                stroke="#1f2937" 
+                                strokeWidth="6"
+                                fill="transparent"
+                                r={radius}
+                                cx="50"
+                                cy="50"
+                            />
+                            <circle
+                                className="progress-ring-circle"
+                                stroke="#FACC15" 
+                                strokeWidth="6"
+                                fill="transparent"
+                                r={radius}
+                                cx="50"
+                                cy="50"
+                                style={{ 
+                                    strokeDasharray: `${circumference} ${circumference}`, 
+                                    strokeDashoffset: strokeDashoffset,
+                                    strokeLinecap: "round"
+                                }}
+                            />
+                    </svg>
+                </div>
+            );
+        };
+
 
         // --- ANA UYGULAMA ---
         function App() {
@@ -191,8 +212,8 @@
             const TOTAL_TARGET_SETS = 42;
             const TOTAL_TARGET_SECONDS = TOTAL_TARGET_SETS * SET_DURATION;
             
-            const TARGET_NUMBER = 42; // Sabit hedef 42 olarak güncellendi
-            const BAR_TARGET_SECONDS = 8 * 60 * 60; // Bar için 8 saat (28800 saniye)
+            const TARGET_NUMBER = 42; // Sabit hedef
+            const BAR_TARGET_SECONDS = 8 * 60 * 60; // Bar için 8 saat
 
             // --- MANUEL SÜRE AYARLAMA ---
             const adjustTotalWork = (minutes) => {
@@ -287,41 +308,6 @@
 
             const currentCycleProgress = (totalWorkSeconds % SET_DURATION) / SET_DURATION;
             
-            const ActiveProgressRing = ({ progress }) => {
-                const radius = 46; 
-                const circumference = 2 * Math.PI * radius;
-                const strokeDashoffset = circumference - (progress * circumference);
-                
-                return (
-                    <div className="absolute top-0 left-0 w-full h-full pointer-events-none" style={{ transform: 'scale(1.15)' }}>
-                        <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                             <circle
-                                 stroke="#1f2937" 
-                                 strokeWidth="6"
-                                 fill="transparent"
-                                 r={radius}
-                                 cx="50"
-                                 cy="50"
-                             />
-                             <circle
-                                 className="progress-ring-circle"
-                                 stroke="#FACC15" 
-                                 strokeWidth="6"
-                                 fill="transparent"
-                                 r={radius}
-                                 cx="50"
-                                 cy="50"
-                                 style={{ 
-                                     strokeDasharray: `${circumference} ${circumference}`, 
-                                     strokeDashoffset: strokeDashoffset,
-                                     strokeLinecap: "round"
-                                 }}
-                             />
-                        </svg>
-                    </div>
-                );
-            };
-
             const getIndicatorStyles = (num, rowId) => {
                 const isActive = phase === rowId && num === currentNumber;
                 const isTargetReached = Math.floor(totalWorkSeconds / SET_DURATION) >= TARGET_NUMBER;
@@ -394,9 +380,14 @@
                         className="fixed top-0 left-0 w-full h-full bg-black transition-opacity duration-300 -z-10"
                         style={{ opacity: bgOverlayOpacity }}
                     ></div>
+                    
+                    {/* --- MOLA İÇİN SABİT KIRMIZI ARKA PLAN --- */}
+                    {sessionMode === 'BREAK' && (
+                        <div className="fixed top-0 left-0 w-full h-full bg-red-900 transition-none z-[-5]"></div>
+                    )}
 
                     <div 
-                        className={`w-full max-w-[1920px] flex flex-col items-center relative transition-all duration-500 text-white font-sans select-none overflow-hidden ${sessionMode === 'BREAK' ? 'break-mode-border' : ''}`}
+                        className="w-full max-w-[1920px] flex flex-col items-center relative transition-all duration-500 text-white font-sans select-none overflow-hidden"
                         style={{ 
                             aspectRatio: "52/30", 
                             transform: "scale(0.85)", 
@@ -571,4 +562,3 @@
     </script>
 </body>
 </html>
-
