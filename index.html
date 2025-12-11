@@ -2,267 +2,195 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Maraton Pomodoro</title>
     
     <!-- React ve ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     
-    <!-- Babel (JSX Derleyicisi) -->
+    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
     <style>
-        body {
-            background-color: black;
+        html, body {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* Scrollbar titremesini engeller */
+            background-color: #000;
             color: white;
-            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            overflow-x: hidden;
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             display: flex;
             justify-content: center;
-            align-items: center; /* Dikeyde ortala */
-            min-height: 100vh;
-            margin: 0;
-        }
-        svg {
-            display: inline-block;
-            vertical-align: middle;
+            align-items: center;
         }
 
-        /* --- BAŞARI FLAŞI ANİMASYONU --- */
+        /* 52:30 ORAN OPTİMİZASYONU */
+        #app-container {
+            width: 100%;
+            max-width: 173.33vh; /* 52/30 oranı ~1.73 */
+            aspect-ratio: 52 / 30;
+            position: relative;
+            background-color: black;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+        }
+
+        svg { display: inline-block; vertical-align: middle; }
+
+        .progress-ring-circle {
+            transition: stroke-dashoffset 1s linear;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+
+        /* Başarı Flaş Efekti */
         @keyframes success-flash-anim {
             0% { opacity: 0; background-color: rgba(34, 197, 94, 0); }
             10% { opacity: 1; background-color: rgba(34, 197, 94, 0.8); }
             100% { opacity: 0; background-color: rgba(34, 197, 94, 0); }
         }
         .success-flash-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none;
             z-index: 9999;
             animation: success-flash-anim 1s ease-out forwards;
         }
-
-        /* Progress Ring Animasyonu */
-        .progress-ring-circle {
-            transition: stroke-dashoffset 1s linear;
-            transform: rotate(-90deg);
-            transform-origin: 50% 50%;
+        
+        /* Mola Modu Arka Planı (Sabit Kırmızı) */
+        .break-mode-bg {
+            background-color: #7f1d1d; 
+            transition: background-color 0.5s ease;
         }
     </style>
 </head>
 <body>
 
-    <div id="root" class="w-full flex justify-center relative"></div>
+    <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useMemo } = React;
 
-        // --- ARKA PLAN RESİMLERİ ---
+        // --- GÖRSELLER (GÜNCELLENDİ) ---
         const bgImages = [
             'gorsela.jpg',
             'gorselb.jpg',
             'gorselc.jpg',
             'gorseld.jpg',
-            'gorsele.jpg',
-            'gorself.jpg'
+            'gorsele.jpg', // Yeni Eklendi
+            'gorself.jpg'  // Yeni Eklendi
         ];
 
-        // --- SES EFEKTİ FONKSİYONU ---
+        // --- SES MOTORU ---
         const playSuccessSound = () => {
             try {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 if (!AudioContext) return;
-                
                 const ctx = new AudioContext();
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
-                
                 osc.connect(gain);
                 gain.connect(ctx.destination);
-                
                 const now = ctx.currentTime;
-                
-                // Melodik başarı sesi
                 osc.type = 'sine';
-                osc.frequency.setValueAtTime(523.25, now); // C5
-                osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.1); // E5
-                osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.2); // G5
-                osc.frequency.exponentialRampToValueAtTime(1046.50, now + 0.4); // C6
-                
+                osc.frequency.setValueAtTime(523.25, now);
+                osc.frequency.exponentialRampToValueAtTime(1046.50, now + 0.4);
                 gain.gain.setValueAtTime(0, now);
                 gain.gain.linearRampToValueAtTime(0.3, now + 0.1);
                 gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
-                
                 osc.start(now);
                 osc.stop(now + 0.8);
-            } catch (e) {
-                console.error("Ses çalınamadı:", e);
-            }
+            } catch (e) { console.error(e); }
         };
 
-        // --- İKON BİLEŞENLERİ ---
-        const Play = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-                <polygon points="5 3 19 12 5 21 5 3"></polygon>
-            </svg>
-        );
+        // --- SVG BİLEŞENLERİ ---
+        const Icons = {
+            Play: ({ s=24, className="" }) => <svg className={className} width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>,
+            Pause: ({ s=24 }) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>,
+            Square: ({ s=24 }) => <svg width={s} height={s} viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>,
+            Refresh: ({ s=24 }) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 2v6h6"/><path d="M21 12A9 9 0 0 0 6 5.3L3 8"/><path d="M21 22v-6h-6"/><path d="M3 12a9 9 0 0 0 15 6.7l3-2.7"/></svg>,
+            Trophy: ({ s=24 }) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>,
+            Image: ({ s=24 }) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        };
 
-        const Pause = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-                <rect x="6" y="4" width="4" height="16"></rect>
-                <rect x="14" y="4" width="4" height="16"></rect>
-            </svg>
-        );
-
-        const Square = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none" className={className}>
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-            </svg>
-        );
-
-        const RefreshCcw = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-                <path d="M3 2v6h6"></path>
-                <path d="M21 12A9 9 0 0 0 6 5.3L3 8"></path>
-                <path d="M21 22v-6h-6"></path>
-                <path d="M3 12a9 9 0 0 0 15 6.7l3-2.7"></path>
-            </svg>
-        );
-
-        const Trophy = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
-                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
-                <path d="M4 22h16"></path>
-                <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path>
-                <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path>
-                <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
-            </svg>
-        );
-
-        const ImageIcon = ({ size = 24, className = "" }) => (
-            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                <polyline points="21 15 16 10 5 21"></polyline>
-            </svg>
-        );
-
-        // --- AKTİF ÇEMBER BİLEŞENİ (Performans için dışarı taşındı) ---
-        const ActiveProgressRing = ({ progress }) => {
+        // --- AKTİF ÇEMBER (Memoized - Performans İçin) ---
+        const ActiveProgressRing = React.memo(({ progress }) => {
             const radius = 46; 
             const circumference = 2 * Math.PI * radius;
-            const strokeDashoffset = circumference - (progress * circumference);
+            const safeProgress = isNaN(progress) ? 0 : progress;
+            const strokeDashoffset = circumference - (safeProgress * circumference);
             
             return (
                 <div className="absolute top-0 left-0 w-full h-full pointer-events-none" style={{ transform: 'scale(1.15)' }}>
                     <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                            <circle
-                                stroke="#1f2937" 
-                                strokeWidth="6"
-                                fill="transparent"
-                                r={radius}
-                                cx="50"
-                                cy="50"
-                            />
-                            <circle
-                                className="progress-ring-circle"
-                                stroke="#FACC15" 
-                                strokeWidth="6"
-                                fill="transparent"
-                                r={radius}
-                                cx="50"
-                                cy="50"
-                                style={{ 
-                                    strokeDasharray: `${circumference} ${circumference}`, 
-                                    strokeDashoffset: strokeDashoffset,
-                                    strokeLinecap: "round"
-                                }}
-                            />
+                         <circle stroke="#1f2937" strokeWidth="6" fill="transparent" r={radius} cx="50" cy="50"/>
+                         <circle className="progress-ring-circle" stroke="#FACC15" strokeWidth="6" fill="transparent" r={radius} cx="50" cy="50"
+                             style={{ strokeDasharray: `${circumference} ${circumference}`, strokeDashoffset: strokeDashoffset, strokeLinecap: "round" }}
+                         />
                     </svg>
                 </div>
             );
-        };
-
+        });
 
         // --- ANA UYGULAMA ---
         function App() {
             const [isRunning, setIsRunning] = useState(false);
-            const [sessionMode, setSessionMode] = useState('WORK'); // 'WORK' | 'BREAK'
+            const [sessionMode, setSessionMode] = useState('WORK'); 
             
             const [totalWorkSeconds, setTotalWorkSeconds] = useState(0); 
             const [totalBreakSeconds, setTotalBreakSeconds] = useState(0); 
             const [currentSessionSeconds, setCurrentSessionSeconds] = useState(0); 
-            
             const [showSuccessFlash, setShowSuccessFlash] = useState(false);
 
-            // --- ARKA PLAN YÖNETİMİ ---
+            // Arka Plan
             const [currentBgIndex, setCurrentBgIndex] = useState(0);
-            const [bgBrightness, setBgBrightness] = useState(50); // 0-100 arası
+            const [bgBrightness, setBgBrightness] = useState(50);
             
-            const SET_DURATION = 11 * 60; // 660 Saniye
+            // Sabitler
+            const SET_DURATION = 11 * 60; // 660 sn
             const CYCLE_LIMITS = [6, 5, 4, 3, 2, 1, 6, 5, 4, 3, 2, 1]; 
-            const TOTAL_TARGET_SETS = 42;
-            const TOTAL_TARGET_SECONDS = TOTAL_TARGET_SETS * SET_DURATION;
-            
-            const TARGET_NUMBER = 42; // Sabit hedef
-            const BAR_TARGET_SECONDS = 8 * 60 * 60; // Bar için 8 saat
+            const TARGET_NUMBER = 42; 
+            const BAR_TARGET_SECONDS = 8 * 60 * 60; 
 
-            // --- MANUEL SÜRE AYARLAMA ---
-            const adjustTotalWork = (minutes) => {
-                setTotalWorkSeconds(prev => Math.max(0, prev + minutes * 60));
-            };
-            
-            const adjustTotalBreak = (minutes) => {
-                setTotalBreakSeconds(prev => Math.max(0, prev + minutes * 60));
-            };
-
-            // --- ARKA PLAN FONKSİYONLARI ---
-            const nextBackground = () => {
-                setCurrentBgIndex(prev => (prev + 1) % bgImages.length);
-            };
-
-            const increaseBrightness = () => {
-                setBgBrightness(prev => Math.min(100, prev + 10));
-            };
-
-            const decreaseBrightness = () => {
-                setBgBrightness(prev => Math.max(0, prev - 10));
-            };
-
+            // Timer
             useEffect(() => {
                 let timer = null;
                 if (isRunning) {
                     timer = setInterval(() => {
-                        setCurrentSessionSeconds(prev => prev + 1);
-                        if (sessionMode === 'WORK') {
-                            setTotalWorkSeconds(prev => prev + 1);
-                        } else {
-                            setTotalBreakSeconds(prev => prev + 1);
-                        }
+                        setCurrentSessionSeconds(p => p + 1);
+                        if (sessionMode === 'WORK') setTotalWorkSeconds(p => p + 1);
+                        else setTotalBreakSeconds(p => p + 1);
                     }, 1000);
                 }
                 return () => clearInterval(timer);
             }, [isRunning, sessionMode]);
 
+            // Hedef & Flaş Kontrolü
             useEffect(() => {
                 if (totalWorkSeconds > 0 && totalWorkSeconds % SET_DURATION === 0) {
                     setShowSuccessFlash(true);
                     playSuccessSound();
-                    const timer = setTimeout(() => {
-                        setShowSuccessFlash(false);
-                    }, 1000);
-                    return () => clearTimeout(timer);
+                    const t = setTimeout(() => setShowSuccessFlash(false), 1000);
+                    return () => clearTimeout(t);
                 }
             }, [totalWorkSeconds]);
 
+            // Hedef Tamamlandıysa Sıfırla
+            useEffect(() => {
+                if (Math.floor(totalWorkSeconds / SET_DURATION) > TARGET_NUMBER && isRunning && sessionMode === 'WORK') {
+                    resetAll();
+                }
+            }, [totalWorkSeconds, isRunning, sessionMode]);
+
+            // Yardımcı Fonksiyonlar
             const formatTime = (seconds) => {
                 const h = Math.floor(seconds / 3600);
                 const m = Math.floor((seconds % 3600) / 60);
@@ -271,17 +199,29 @@
                 return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
             };
 
-            const getCycleState = () => {
+            const togglePause = () => setIsRunning(!isRunning);
+            const switchSessionMode = () => {
+                const newMode = sessionMode === 'WORK' ? 'BREAK' : 'WORK';
+                setSessionMode(newMode);
+                setCurrentSessionSeconds(0);
+                setIsRunning(newMode === 'BREAK');
+            };
+            const resetAll = () => {
+                setIsRunning(false); setSessionMode('WORK');
+                setTotalWorkSeconds(0); setTotalBreakSeconds(0); setCurrentSessionSeconds(0);
+            };
+            const fastForward = () => {
+                const missing = SET_DURATION - (totalWorkSeconds % SET_DURATION);
+                setTotalWorkSeconds(p => p + missing + 1);
+            };
+
+            // Piramit Mantığı
+            const cycleState = useMemo(() => {
                 let completedSets = Math.floor(totalWorkSeconds / SET_DURATION);
                 if (completedSets >= TARGET_NUMBER) {
                     return { lockedNumbers: [1,2,3,4,5,6], currentNumber: null, prevNumber: 6, phase: 3 };
                 }
-
-                let lockedNumbers = [];
-                let currentNumber = 0;
-                let prevNumber = 0;
-                let setsProcessed = 0;
-                let phase = 1; 
+                let lockedNumbers = [], currentNumber = 0, prevNumber = 0, setsProcessed = 0, phase = 1; 
                 for (let i = 0; i < CYCLE_LIMITS.length; i++) {
                     const cycleLength = CYCLE_LIMITS[i];
                     const cycleEnd = setsProcessed + cycleLength; 
@@ -292,208 +232,107 @@
                         prevNumber = setsInThisCycle > 0 ? setsInThisCycle : null;
                         return { lockedNumbers, currentNumber, prevNumber, phase };
                     }
-                    if (i === 5) { lockedNumbers = []; } else { lockedNumbers.push(cycleLength); }
+                    if (i === 5) lockedNumbers = []; else lockedNumbers.push(cycleLength);
                     setsProcessed += cycleLength;
                 }
                 return { lockedNumbers, currentNumber, prevNumber, phase: 2 };
-            };
+            }, [totalWorkSeconds]);
 
-            const { lockedNumbers, currentNumber, prevNumber, phase } = getCycleState();
-            
-            useEffect(() => {
-                if (Math.floor(totalWorkSeconds / SET_DURATION) > TARGET_NUMBER && isRunning && sessionMode === 'WORK') {
-                    resetAll();
-                }
-            }, [totalWorkSeconds, isRunning, sessionMode]);
-
+            const { lockedNumbers, currentNumber, prevNumber, phase } = cycleState;
             const currentCycleProgress = (totalWorkSeconds % SET_DURATION) / SET_DURATION;
-            
-            const getIndicatorStyles = (num, rowId) => {
+            const progressPercent = Math.min((totalWorkSeconds / BAR_TARGET_SECONDS) * 100, 100);
+
+            // Stil Hesaplayıcı
+            const getIndicatorClass = (num, rowId) => {
                 const isActive = phase === rowId && num === currentNumber;
                 const isTargetReached = Math.floor(totalWorkSeconds / SET_DURATION) >= TARGET_NUMBER;
-
-                let baseClasses = "relative w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center rounded-full text-2xl sm:text-3xl font-black transition-all duration-500 ";
+                let base = "relative w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center rounded-full text-2xl sm:text-3xl font-black transition-all duration-500 ";
                 
-                if (isTargetReached) {
-                    return baseClasses + "text-green-500 border-[4px] border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.8)] bg-black/50";
-                }
-
-                if (phase > rowId) {
-                    return baseClasses + "text-green-500 border-[4px] border-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)] bg-black/50";
-                }
+                if (isTargetReached) return base + "text-green-500 border-[4px] border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.8)] bg-black/50";
+                if (phase > rowId) return base + "text-green-500 border-[4px] border-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)] bg-black/50";
+                
                 if (phase === rowId) {
-                    if (lockedNumbers.includes(num)) {
-                        return baseClasses + "text-green-500 border-[4px] border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.6)] bg-black/50";
-                    }
-                    if (isActive) {
-                        return baseClasses + "text-yellow-400 scale-110 shadow-[0_0_20px_rgba(250,204,21,0.6)] z-10 bg-black/50";
-                    }
-                    if (num === prevNumber) {
-                         return baseClasses + "text-green-500 border-[4px] border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.6)] bg-black/50";
-                    }
+                    if (lockedNumbers.includes(num)) return base + "text-green-500 border-[4px] border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.6)] bg-black/50";
+                    if (isActive) return base + "text-yellow-400 scale-110 shadow-[0_0_20px_rgba(250,204,21,0.6)] z-10 bg-black/50";
+                    if (num === prevNumber) return base + "text-green-500 border-[4px] border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.6)] bg-black/50";
                 }
-                return baseClasses + "text-gray-400 border-[4px] border-gray-700 bg-black/50";
+                return base + "text-gray-400 border-[4px] border-gray-700 bg-black/50";
             };
-
-            const togglePause = () => setIsRunning(!isRunning);
-            
-            const switchSessionMode = () => {
-                const newMode = sessionMode === 'WORK' ? 'BREAK' : 'WORK';
-                setSessionMode(newMode);
-                setCurrentSessionSeconds(0);
-                if (newMode === 'BREAK') {
-                    setIsRunning(true);
-                } else {
-                    setIsRunning(false);
-                }
-            };
-
-            const resetAll = () => {
-                setIsRunning(false);
-                setSessionMode('WORK');
-                setTotalWorkSeconds(0);
-                setTotalBreakSeconds(0);
-                setCurrentSessionSeconds(0);
-            };
-
-            const fastForward = () => {
-                const currentMod = totalWorkSeconds % SET_DURATION;
-                const missing = SET_DURATION - currentMod;
-                setTotalWorkSeconds(prev => prev + missing + 1); 
-            };
-
-            // Bar için progress hesaplaması (8 saat üzerinden)
-            const progressPercent = Math.min((totalWorkSeconds / BAR_TARGET_SECONDS) * 100, 100);
-            
-            // Arka plan parlaklık opaklığı (0 -> 1, 100 -> 0)
-            const bgOverlayOpacity = 1 - (bgBrightness / 100);
 
             return (
-                <>
-                    {/* --- ARKA PLAN KATMANI --- */}
-                    <div 
-                        className="fixed top-0 left-0 w-full h-full bg-cover bg-center transition-all duration-1000 -z-20"
-                        style={{ backgroundImage: `url('${bgImages[currentBgIndex]}')` }}
-                    ></div>
-                    {/* --- PARLAKLIK KATMANI (SİYAH OVERLAY) --- */}
-                    <div 
-                        className="fixed top-0 left-0 w-full h-full bg-black transition-opacity duration-300 -z-10"
-                        style={{ opacity: bgOverlayOpacity }}
-                    ></div>
+                <div id="app-container">
                     
-                    {/* --- MOLA İÇİN SABİT KIRMIZI ARKA PLAN --- */}
-                    {sessionMode === 'BREAK' && (
-                        <div className="fixed top-0 left-0 w-full h-full bg-red-900 transition-none z-[-5]"></div>
+                    {/* --- ARKA PLAN KATMANI --- */}
+                    {sessionMode === 'WORK' ? (
+                        <>
+                            <div className="absolute inset-0 bg-cover bg-center transition-all duration-1000" style={{ backgroundImage: `url('${bgImages[currentBgIndex]}')` }}></div>
+                            <div className="absolute inset-0 bg-black transition-opacity duration-300" style={{ opacity: 1 - (bgBrightness / 100) }}></div>
+                        </>
+                    ) : (
+                        <div className="absolute inset-0 break-mode-bg z-0"></div>
                     )}
 
-                    <div 
-                        className="w-full max-w-[1920px] flex flex-col items-center relative transition-all duration-500 text-white font-sans select-none overflow-hidden"
-                        style={{ 
-                            aspectRatio: "52/30", 
-                            transform: "scale(0.85)", 
-                            transformOrigin: "center center",
-                            justifyContent: "flex-start",
-                        }}
-                    >
+                    {/* Flaş Efekti */}
+                    {showSuccessFlash && <div className="success-flash-overlay"></div>}
+
+                    {/* --- SOL ÜST KONTROL --- */}
+                    <div className="absolute top-6 left-6 z-50 flex items-center gap-3">
+                        <button onClick={() => setBgBrightness(b => Math.max(0, b - 10))} className="w-10 h-10 flex items-center justify-center rounded-lg bg-black/30 hover:bg-black/70 text-gray-400 hover:text-white font-bold text-2xl transition-all duration-300 backdrop-blur-sm opacity-30 hover:opacity-100">-</button>
+                        <button onClick={() => setCurrentBgIndex(i => (i + 1) % bgImages.length)} className="w-10 h-10 flex items-center justify-center rounded-lg bg-black/30 hover:bg-black/70 text-gray-400 hover:text-white transition-all duration-300 backdrop-blur-sm opacity-30 hover:opacity-100"><Icons.Image s={22}/></button>
+                        <button onClick={() => setBgBrightness(b => Math.min(100, b + 10))} className="w-10 h-10 flex items-center justify-center rounded-lg bg-black/30 hover:bg-black/70 text-gray-400 hover:text-white font-bold text-2xl transition-all duration-300 backdrop-blur-sm opacity-30 hover:opacity-100">+</button>
+                    </div>
+
+                    {/* --- İÇERİK ALANI --- */}
+                    <div className="flex-1 flex flex-col items-center justify-start pt-12 w-full relative z-10">
                         
-                        {showSuccessFlash && <div className="success-flash-overlay"></div>}
-
-                        {/* --- ARKA PLAN KONTROL TUŞLARI (SOL ÜST) --- */}
-                        <div className="absolute top-6 left-6 z-50 flex items-center gap-3">
-                            <button 
-                                onClick={decreaseBrightness} 
-                                className="w-10 h-10 flex items-center justify-center rounded-lg bg-black/30 hover:bg-black/70 text-gray-400 hover:text-white font-bold text-2xl transition-all duration-300 backdrop-blur-sm opacity-50 hover:opacity-100"
-                                title="Parlaklığı Azalt"
-                            >
-                                -
-                            </button>
-                            
-                            <button 
-                                onClick={nextBackground} 
-                                className="w-10 h-10 flex items-center justify-center rounded-lg bg-black/30 hover:bg-black/70 text-gray-400 hover:text-white transition-all duration-300 backdrop-blur-sm opacity-50 hover:opacity-100"
-                                title="Görüntüyü Değiştir"
-                            >
-                                <ImageIcon size={22} />
-                            </button>
-                            
-                            <button 
-                                onClick={increaseBrightness} 
-                                className="w-10 h-10 flex items-center justify-center rounded-lg bg-black/30 hover:bg-black/70 text-gray-400 hover:text-white font-bold text-2xl transition-all duration-300 backdrop-blur-sm opacity-50 hover:opacity-100"
-                                title="Parlaklığı Arttır"
-                            >
-                                +
-                            </button>
-                        </div>
-
-                        {/* Üst Göstergeler */}
-                        <div className="w-full max-w-xl flex flex-col gap-6 mb-8 relative z-10 px-4 mt-8">
-                            {/* 1. Sıra */}
-                            <div className="flex justify-between items-center relative">
-                                {[1, 2, 3, 4, 5, 6].map((num) => {
-                                    const isActive = phase === 1 && num === currentNumber;
-                                    return (
-                                        <div key={`r1-${num}`} className={getIndicatorStyles(num, 1)}>
-                                            {isActive && <ActiveProgressRing progress={currentCycleProgress} />}
+                        {/* 1. Üst Göstergeler */}
+                        <div className="w-full max-w-xl flex flex-col gap-6 px-4">
+                            {[1, 2].map(row => (
+                                <div key={row} className="flex justify-between items-center relative">
+                                    {[1, 2, 3, 4, 5, 6].map(num => (
+                                        <div key={`${row}-${num}`} className={getIndicatorClass(num, row)}>
+                                            {phase === row && num === currentNumber && <ActiveProgressRing progress={currentCycleProgress} />}
                                             <span className="relative z-10">{num}</span>
                                         </div>
-                                    );
-                                })}
-                            </div>
-                            {/* 2. Sıra */}
-                            <div className="flex justify-between items-center relative">
-                                {[1, 2, 3, 4, 5, 6].map((num) => {
-                                    const isActive = phase === 2 && num === currentNumber;
-                                    return (
-                                        <div key={`r2-${num}`} className={getIndicatorStyles(num, 2)}>
-                                            {isActive && <ActiveProgressRing progress={currentCycleProgress} />}
-                                            <span className="relative z-10">{num}</span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                                    ))}
+                                </div>
+                            ))}
                         </div>
 
-                        {/* Ana Sayaç Alanı */}
-                        <div className="text-center flex-1 flex flex-col justify-center mb-8 w-full relative z-10">
-                            <h2 className={`text-sm tracking-[0.4em] uppercase font-bold transition-colors duration-300 mb-2 drop-shadow-md ${sessionMode === 'WORK' ? 'text-yellow-500' : 'text-red-500'}`}>
+                        {/* 2. Ana Sayaç */}
+                        <div className="flex-1 flex flex-col justify-center items-center w-full mt-4">
+                            <h2 className={`text-lg tracking-[0.4em] uppercase font-bold transition-colors duration-300 mb-2 drop-shadow-md ${sessionMode === 'WORK' ? 'text-yellow-500' : 'text-white'}`}>
                                 {sessionMode === 'WORK' ? 'ÇALIŞMA MODU' : 'MOLA MODU'} {!isRunning && currentSessionSeconds > 0 ? '(DURAKLATILDI)' : ''}
                             </h2>
-                            
-                            {/* Büyütülmüş Sayaç */}
-                            <div className={`text-[8rem] sm:text-[10rem] md:text-[13rem] leading-none font-bold tabular-nums tracking-tighter animate-in fade-in duration-300 drop-shadow-xl ${sessionMode === 'WORK' ? 'text-white' : 'text-red-600'} ${!isRunning ? 'opacity-50' : ''}`}>
+                            <div className={`text-[12rem] xl:text-[14rem] leading-none font-bold tabular-nums tracking-tighter drop-shadow-2xl ${sessionMode === 'WORK' ? 'text-white' : 'text-white'} ${!isRunning ? 'opacity-50' : ''}`}>
                                 {formatTime(currentSessionSeconds)}
                             </div>
-                            
-                            <div className="text-gray-300 text-sm mt-4 font-medium tracking-wide flex items-center justify-center gap-2 drop-shadow-md">
+                            <div className="text-gray-300 text-lg mt-6 font-medium tracking-wide flex items-center gap-2 drop-shadow-md">
                                 {Math.floor(totalWorkSeconds / SET_DURATION) < TARGET_NUMBER ? (
                                     <>
-                                        <span className="bg-black/50 px-2 py-1 rounded text-gray-300 text-xs uppercase">Anlık Hedef</span>
-                                        <span className="text-white font-bold text-xl">{Math.floor(totalWorkSeconds / SET_DURATION) + 1}</span>
+                                        <span className="bg-black/50 px-3 py-1 rounded text-gray-300 text-xs uppercase">Anlık Hedef</span>
+                                        <span className="text-white font-bold text-2xl">{Math.floor(totalWorkSeconds / SET_DURATION) + 1}</span>
                                         <span className="text-gray-400">/</span>
-                                        <span className="text-white font-bold text-xl">{TARGET_NUMBER}</span>
+                                        <span className="text-white font-bold text-2xl">{TARGET_NUMBER}</span>
                                     </>
-                                ) : <span className="text-green-400 font-bold flex items-center gap-2 text-lg"><Trophy size={20}/> HEDEF TAMAMLANDI! ({TARGET_NUMBER}/{TARGET_NUMBER})</span>}
+                                ) : <span className="text-green-400 font-bold flex items-center gap-2 text-xl"><Icons.Trophy s={24}/> HEDEF TAMAMLANDI!</span>}
                             </div>
                         </div>
 
-                        {/* KONTROL BUTONLARI */}
-                        <div className="relative z-20 flex items-center gap-6 justify-center min-h-[140px] mb-8">
-                            
+                        {/* 3. Kontrol Butonları */}
+                        <div className="flex items-center gap-8 justify-center mb-10">
                             {sessionMode === 'WORK' ? (
                                 <>
-                                    {/* 1. BAŞLAT / DURAKLAT */}
                                     <div className="flex flex-col items-center gap-2">
-                                         <button onClick={togglePause} className={`w-24 h-24 sm:w-28 sm:h-28 rounded-full flex items-center justify-center border-[6px] transition-all duration-300 hover:scale-105 active:scale-95 group backdrop-blur-sm ${isRunning ? 'border-yellow-400 text-yellow-400 bg-yellow-400/10' : 'border-green-500 text-green-500 bg-green-500/10 shadow-[0_0_30px_rgba(34,197,94,0.3)]'}`}>
-                                             {isRunning ? <Pause size={40} className="sm:w-12 sm:h-12" /> : <Play size={40} className="ml-2 sm:w-12 sm:h-12" />}
+                                         <button onClick={togglePause} className={`w-28 h-28 rounded-full flex items-center justify-center border-[6px] transition-all duration-200 hover:scale-105 active:scale-95 backdrop-blur-sm ${isRunning ? 'border-yellow-400 text-yellow-400 bg-yellow-400/10' : 'border-green-500 text-green-500 bg-green-500/10 shadow-[0_0_30px_rgba(34,197,94,0.3)]'}`}>
+                                             {isRunning ? <Icons.Pause s={48} /> : <Icons.Play s={48} className="ml-2" />}
                                          </button>
-                                         <span className="text-xs uppercase tracking-widest text-gray-300 font-bold drop-shadow-sm">{getPlayButtonText(isRunning, currentSessionSeconds)}</span>
+                                         <span className="text-xs uppercase tracking-widest text-gray-300 font-bold drop-shadow-sm">{isRunning ? "DURAKLAT" : (currentSessionSeconds===0?"BAŞLA":"DEVAM ET")}</span>
                                     </div>
-
-                                    {/* 2. MOLA VER */}
                                     {(isRunning || currentSessionSeconds > 0) && (
                                         <div className="flex flex-col items-center gap-2 animate-in fade-in zoom-in duration-300">
-                                            <button onClick={switchSessionMode} className="w-24 h-24 sm:w-28 sm:h-28 rounded-full flex items-center justify-center border-[6px] border-red-600 text-red-600 hover:bg-red-600/10 transition-all duration-300 hover:scale-105 active:scale-95 backdrop-blur-sm">
-                                                <Square size={32} className="sm:w-10 sm:h-10" /> 
+                                            <button onClick={switchSessionMode} className="w-28 h-28 rounded-full flex items-center justify-center border-[6px] border-white text-white hover:bg-white/10 transition-all duration-200 hover:scale-105 active:scale-95 backdrop-blur-sm">
+                                                <Icons.Square s={36} /> 
                                             </button>
                                             <span className="text-xs uppercase tracking-widest text-gray-300 font-bold drop-shadow-sm">MOLA VER</span>
                                         </div>
@@ -501,64 +340,59 @@
                                 </>
                             ) : (
                                 <div className="flex flex-col items-center gap-2">
-                                    <button onClick={switchSessionMode} className="w-24 h-24 sm:w-28 sm:h-28 rounded-full flex items-center justify-center border-[6px] border-green-500 text-green-500 bg-green-500/10 shadow-[0_0_40px_rgba(34,197,94,0.4)] transition-all duration-300 hover:scale-105 active:scale-95 animate-pulse backdrop-blur-sm">
-                                        <Play size={40} className="ml-2 sm:w-12 sm:h-12" />
+                                    <button onClick={switchSessionMode} className="w-28 h-28 rounded-full flex items-center justify-center border-[6px] border-white text-white bg-white/10 shadow-[0_0_40px_rgba(255,255,255,0.4)] transition-all duration-200 hover:scale-105 active:scale-95 animate-pulse backdrop-blur-sm">
+                                        <Icons.Play s={48} className="ml-2" />
                                     </button>
-                                    <span className="text-xs uppercase tracking-widest text-green-500 font-bold drop-shadow-sm">ÇALIŞMAYA DÖN</span>
+                                    <span className="text-xs uppercase tracking-widest text-white font-bold drop-shadow-sm">ÇALIŞMAYA DÖN</span>
                                 </div>
                             )}
                         </div>
 
-                        {/* Alt İstatistikler (Manuel Butonlar Eklendi) */}
-                        <div className="w-full max-w-4xl flex justify-between px-10 sm:px-32 text-center pb-24 relative z-10">
-                            <div className="flex flex-col items-center group bg-black/30 p-2 rounded-xl backdrop-blur-sm">
-                                <div className="text-gray-400 text-[10px] sm:text-xs uppercase tracking-widest mb-2 font-bold">Toplam Çalışma</div>
-                                <div className="flex items-center gap-3">
-                                    <button onClick={() => adjustTotalWork(-11)} className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1 font-bold text-xl" title="-11 Dk">-</button>
-                                    <div className="text-2xl sm:text-3xl font-mono text-yellow-100 font-light tabular-nums w-40 drop-shadow-md">{formatTime(totalWorkSeconds)}</div>
-                                    <button onClick={() => adjustTotalWork(11)} className="text-gray-300 hover:text-green-500 transition-colors opacity-0 group-hover:opacity-100 p-1 font-bold text-xl" title="+11 Dk">+</button>
+                        {/* 4. Alt İstatistikler */}
+                        <div className="w-full max-w-5xl flex justify-between px-20 text-center pb-20">
+                            <div className="flex flex-col items-center group bg-black/30 p-3 rounded-xl backdrop-blur-sm">
+                                <div className="text-gray-400 text-xs uppercase tracking-widest mb-1 font-bold">Toplam Çalışma</div>
+                                <div className="flex items-center gap-4">
+                                    <button onClick={() => setTotalWorkSeconds(p => Math.max(0, p - 660))} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 font-bold text-xl">-</button>
+                                    <div className="text-3xl font-mono text-yellow-100 font-light tabular-nums w-48 drop-shadow-md">{formatTime(totalWorkSeconds)}</div>
+                                    <button onClick={() => setTotalWorkSeconds(p => p + 660)} className="text-gray-300 hover:text-green-500 opacity-0 group-hover:opacity-100 font-bold text-xl">+</button>
                                 </div>
                             </div>
-                            <div className="h-12 w-px bg-gray-700 self-center"></div>
-                            <div className="flex flex-col items-center group bg-black/30 p-2 rounded-xl backdrop-blur-sm">
-                                <div className="text-gray-400 text-[10px] sm:text-xs uppercase tracking-widest mb-2 font-bold">Toplam Mola</div>
-                                <div className="flex items-center gap-3">
-                                    <button onClick={() => adjustTotalBreak(-11)} className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1 font-bold text-xl" title="-11 Dk">-</button>
-                                    <div className="text-2xl sm:text-3xl font-mono text-blue-100 font-light tabular-nums w-40 drop-shadow-md">{formatTime(totalBreakSeconds)}</div>
-                                    <button onClick={() => adjustTotalBreak(11)} className="text-gray-300 hover:text-green-500 transition-colors opacity-0 group-hover:opacity-100 p-1 font-bold text-xl" title="+11 Dk">+</button>
+                            <div className="h-16 w-px bg-gray-600 self-center"></div>
+                            <div className="flex flex-col items-center group bg-black/30 p-3 rounded-xl backdrop-blur-sm">
+                                <div className="text-gray-400 text-xs uppercase tracking-widest mb-1 font-bold">Toplam Mola</div>
+                                <div className="flex items-center gap-4">
+                                    <button onClick={() => setTotalBreakSeconds(p => Math.max(0, p - 660))} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 font-bold text-xl">-</button>
+                                    <div className="text-3xl font-mono text-blue-100 font-light tabular-nums w-48 drop-shadow-md">{formatTime(totalBreakSeconds)}</div>
+                                    <button onClick={() => setTotalBreakSeconds(p => p + 660)} className="text-gray-300 hover:text-green-500 opacity-0 group-hover:opacity-100 font-bold text-xl">+</button>
                                 </div>
                             </div>
                         </div>
 
-                        {/* ALT BAR (Tabana ve Yanlara Yapışık) */}
-                        <div className="absolute bottom-0 left-0 w-full h-8 bg-gray-800/50 backdrop-blur-md flex border-t border-black/50 z-20">
+                        {/* Test Butonları (Sağ Alt) */}
+                        <div className="absolute bottom-12 right-6 z-50 flex gap-2 opacity-0 hover:opacity-100 transition-opacity">
+                             <button onClick={fastForward} className="px-2 py-1 bg-gray-800 text-xs text-gray-400 rounded">Skip</button>
+                             <button onClick={resetAll} className="px-2 py-1 bg-red-900 text-xs text-white rounded"><Icons.Refresh s={12}/></button>
+                        </div>
+
+                        {/* 5. Alt Bar (Footer) */}
+                        <div className="absolute bottom-0 left-0 w-full h-8 bg-gray-900/60 backdrop-blur-md flex border-t border-white/10">
                             {[...Array(8)].map((_, i) => (
-                                <div key={i} className="flex-1 border-r border-black/50 relative overflow-hidden">
-                                    <div className="absolute top-0 left-0 h-full bg-green-600/80 transition-all duration-1000 ease-linear" style={{ width: `${Math.max(0, Math.min(100, (progressPercent - (i * 12.5)) * 8))}%` }}></div>
+                                <div key={i} className="flex-1 border-r border-white/10 relative overflow-hidden">
+                                    <div className="absolute top-0 left-0 h-full bg-green-500/90 transition-all duration-1000 ease-linear" style={{ width: `${Math.max(0, Math.min(100, (progressPercent - (i * 12.5)) * 8))}%` }}></div>
                                 </div>
                             ))}
                         </div>
 
-                        {/* Gizli Test Butonları */}
-                        <div className="fixed bottom-12 right-4 flex gap-2 opacity-10 hover:opacity-100 transition-opacity z-50">
-                            <button onClick={fastForward} className="p-2 text-[10px] border border-gray-600 text-gray-400 rounded hover:bg-gray-900/80 bg-black/50 backdrop-blur-sm" title="+11dk">Test</button>
-                            <button onClick={resetAll} className="p-2 bg-red-900/30 text-red-400 rounded hover:bg-red-900/80 hover:text-white backdrop-blur-sm"><RefreshCcw size={14} /></button>
-                        </div>
-
                     </div>
-                </>
+                </div>
             );
         }
-        
-        // Helper
-        const getPlayButtonText = (isRunning, currentSessionSeconds) => {
-             if (isRunning) return "DURAKLAT";
-             if (currentSessionSeconds === 0) return "BAŞLA";
-             return "DEVAM ET";
-        };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
 </body>
 </html>
+
+
