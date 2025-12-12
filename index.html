@@ -62,18 +62,6 @@
             will-change: stroke-dashoffset;
         }
 
-        /* Başarı Efekti */
-        @keyframes success-pulse {
-            0% { background-color: rgba(34, 197, 94, 0); }
-            50% { background-color: rgba(34, 197, 94, 0.6); }
-            100% { background-color: rgba(34, 197, 94, 0); }
-        }
-        .success-overlay {
-            position: absolute; inset: 0;
-            pointer-events: none; z-index: 9999;
-            animation: success-pulse 1s ease-out forwards;
-        }
-        
         /* Mola Arka Planı */
         .bg-break { background-color: #7f1d1d; }
     </style>
@@ -92,6 +80,13 @@
             'gorselc.jpg',
             'gorseld.jpg',
             'gorsele.jpg',
+            'ist2.jpg',
+            'ist3.jpg',
+            'ist4.jpg',
+            'ist5.jpg',
+            'ist6.jpg',
+            'ist7.jpg',
+            'ist1.jpg',
             'gorself.jpg'
         ];
 
@@ -151,7 +146,6 @@
             const [workSec, setWorkSec] = useState(0);
             const [breakSec, setBreakSec] = useState(0);
             const [sessionSec, setSessionSec] = useState(0);
-            const [flash, setFlash] = useState(false);
             
             // Görünüm Ayarları
             const [bgIndex, setBgIndex] = useState(0);
@@ -176,12 +170,10 @@
                 return () => clearInterval(interval);
             }, [isRunning, mode]);
 
-            // Hedef Kontrol (11dk)
+            // Hedef Kontrol (11dk) - Sadece Ses Çal
             useEffect(() => {
                 if (workSec > 0 && workSec % DURATION === 0) {
-                    setFlash(true);
                     playSuccessSound();
-                    setTimeout(() => setFlash(false), 1000);
                 }
             }, [workSec]);
 
@@ -212,23 +204,32 @@
             const reset = () => { setIsRunning(false); setMode('WORK'); setWorkSec(0); setBreakSec(0); setSessionSec(0); };
             const skip = () => setWorkSec(s => s + (DURATION - (s % DURATION)) + 1);
 
-            // Piramit Hesabı
+            // Piramit Hesabı (GELİŞMİŞ)
             const cycleData = useMemo(() => {
                 let done = Math.floor(workSec / DURATION);
-                if (done >= TARGET) return { current: null, phase: 3, locked: [1,2,3,4,5,6] };
+                if (done >= TARGET) return { current: null, phase: 3, completedCycleLimits1: [6,5,4,3,2,1], completedCycleLimits2: [6,5,4,3,2,1], currentLimit: 0 };
                 
-                let locked = [], processed = 0, phase = 1, current = 0;
+                let processed = 0, phase = 1, current = 0;
+                let completedCycleLimits1 = [];
+                let completedCycleLimits2 = [];
+
                 for (let i = 0; i < CYCLES.length; i++) {
-                    let end = processed + CYCLES[i];
-                    if (done < end) {
+                    let cycleLen = CYCLES[i];
+                    let end = processed + cycleLen;
+                    
+                    if (done >= end) {
+                        // Bu döngü bitmiş, limitini kaydet
+                        if (i < 6) completedCycleLimits1.push(cycleLen);
+                        else completedCycleLimits2.push(cycleLen);
+                        processed += cycleLen;
+                    } else {
+                        // Bu döngünün içindeyiz
                         phase = i < 6 ? 1 : 2;
                         current = (done - processed) + 1;
-                        return { current, phase, locked };
+                        return { current, phase, currentLimit: cycleLen, completedCycleLimits1, completedCycleLimits2 };
                     }
-                    if (i === 5) locked = []; else locked.push(CYCLES[i]);
-                    processed += CYCLES[i];
                 }
-                return { current: 0, phase: 2, locked: [] };
+                return { current: 0, phase: 2, currentLimit: 6, completedCycleLimits1, completedCycleLimits2 };
             }, [workSec]);
 
             const progress = (workSec % DURATION) / DURATION;
@@ -236,27 +237,62 @@
 
             // Stil Helper
             const getBubbleClass = (num, row) => {
-                const { current, phase, locked } = cycleData;
+                const { current, phase, currentLimit, completedCycleLimits1, completedCycleLimits2 } = cycleData;
                 const active = phase === row && num === current;
                 const reached = Math.floor(workSec / DURATION) >= TARGET;
+                const lastCompleted = current > 1 ? current - 1 : null;
                 
+                // Hangi limit listesini kullanacağız?
+                const myCompletedLimits = row === 1 ? completedCycleLimits1 : completedCycleLimits2;
+
                 let cls = "relative w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center rounded-full text-3xl font-bold transition-all duration-300 border-[4px] ";
                 
+                // Hedef Tamamlandı
                 if (reached) return cls + "border-green-500 text-green-500 bg-black/60";
-                if (phase > row) return cls + "border-green-500 text-green-500 bg-black/60 opacity-60";
                 
-                if (phase === row) {
-                    if (locked.includes(num)) return cls + "border-green-500 text-green-500 bg-black/60";
-                    if (active) return cls + "border-transparent text-yellow-400 bg-black/80 scale-110 z-10"; 
+                // Geçmiş Satırlar (Full Tamamlanmış)
+                if (phase > row) {
+                    // Geçmiş satırdaki her sayı bir piramit sonudur, o yüzden hepsi yeşil
+                    return cls + "border-green-500 text-green-500 bg-black/60 shadow-[0_0_10px_rgba(34,197,94,0.3)]";
                 }
                 
+                // Mevcut Satır
+                if (phase === row) {
+                    // 1. Durum: Piramit Sonu mu? (Örn: 6'lı döngü bittiyse 6 yeşil kalmalı)
+                    if (myCompletedLimits.includes(num)) {
+                        return cls + "border-green-500 text-green-500 bg-black/60 shadow-[0_0_15px_rgba(34,197,94,0.5)]";
+                    }
+
+                    // 2. Durum: Piramit Limiti dışı mı? (Sönük)
+                    if (num > currentLimit) {
+                         return cls + "border-gray-800 text-gray-800 bg-black/20 opacity-30";
+                    }
+
+                    // 3. Durum: Aktif Kutu (SARI)
+                    if (active) {
+                        return cls + "border-transparent text-yellow-400 bg-black/80 scale-110 z-10"; 
+                    }
+
+                    // 4. Durum: Son Tamamlanan (YEŞİL)
+                    // Sadece aktif döngünün içindeki bir önceki kutu
+                    if (num === lastCompleted) {
+                        return cls + "border-green-500 text-green-500 bg-black/60 shadow-[0_0_15px_rgba(34,197,94,0.4)]";
+                    }
+
+                    // 5. Durum: Diğer Tamamlananlar (SÖNÜK)
+                    // Piramit sonu değilse ve son tamamlanan değilse sönük olmalı
+                    if (num < current) {
+                         return cls + "border-gray-700 text-gray-600 bg-black/40 opacity-50";
+                    }
+                }
+                
+                // Gelecek Satırlar / Boş
                 return cls + "border-gray-600 text-gray-500 bg-black/40";
             };
 
             return (
                 <div id="tv-container">
-                    {flash && <div className="success-overlay"></div>}
-
+                    
                     {/* Arka Plan Katmanı */}
                     {mode === 'WORK' ? (
                         <>
@@ -379,5 +415,3 @@
     </script>
 </body>
 </html>
-
-
